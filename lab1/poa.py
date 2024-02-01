@@ -113,12 +113,53 @@ def oracle(cipher:bytes, iv:bytes) -> bool:
 """
 TODO: Demonstrate the padding oracle attack here!!!
 """
-def padding_oracle_attack_exploiter(iv):
-    assert False, "Padding oracle attack is unimplemented"
+def padding_oracle_attack_exploiter(iv, ciphertext):
+    # print("[DEBUG] ciphertext={}".format(ciphertext))
+    block_cnt = len(ciphertext) // 16
+
+    result = b''
+    for i in range(block_cnt):
+        ciper_block_to_crack = ciphertext[len(ciphertext) - (i + 1) * 16 : len(ciphertext) - i * 16]
+        # print("[DEBUG] ciper_block_to_crack={}".format(ciper_block_to_crack))
+        if i != block_cnt - 1:
+            ciper_block_before = ciphertext[len(ciphertext) - (i + 2) * 16 : len(ciphertext) - (i + 1) * 16]
+        else:
+            ciper_block_before = iv
+        # print("[DEBUG] ciper_block_before={}".format(ciper_block_before))
+
+        # crack block using oracle
+        intermediate_state = bytearray(16)
+        crafted_pre_block = bytearray(16)
+        for byte_idx in range(16):
+            pos_to_crack = (16 - 1) - byte_idx # crack in reverse order
+            valid_padding = byte_idx + 1
+            for bf_value in range(256): # brute force all possible byte value
+                crafted_pre_block[pos_to_crack] = bf_value
+                if oracle(crafted_pre_block + ciper_block_to_crack, bytearray(16)) is True: # passing any iv to padding oracle works
+                    intermediate_state[pos_to_crack] = crafted_pre_block[pos_to_crack] ^ valid_padding
+
+                    # update intermediate_state for cracking next byte
+                    valid_padding = valid_padding + 1
+                    for update_idx in range(valid_padding - 1):
+                        pos_to_craft = (16 - 1) - update_idx
+                        crafted_pre_block[pos_to_craft] = valid_padding ^ intermediate_state[pos_to_craft]
+                    break
+
+        # reconstruct plaintext: plaintext_block_this = ciper_block_before ^ intermediate_state
+        plain_block_exploit = bytearray(16)
+        for p_idx in range(16):
+            plain_block_exploit[p_idx] = ciper_block_before[p_idx] ^ intermediate_state[p_idx]
+        result = plain_block_exploit + result
+
+    return result
  
 
 if __name__ == '__main__':
     iv = b'0000000000000000'
     # Test string
     p = b'This is cs528 padding oracle attack lab with hello world~~~!!'
-    padding_oracle_attack_exploiter(iv)
+    print(p)
+    ciphertext = encrypt(p, KEY, iv)
+    print(type(ciphertext))
+    result = padding_oracle_attack_exploiter(iv, ciphertext)
+    print(result)
