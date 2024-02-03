@@ -1,0 +1,7 @@
+Run:
+    pip install -r requirements.txt
+    python poa.py
+
+To test other plaintexts:
+    modify the value of test string p in __main__ of poa.py
+

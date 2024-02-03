@@ -114,28 +114,47 @@ def oracle(cipher:bytes, iv:bytes) -> bool:
 TODO: Demonstrate the padding oracle attack here!!!
 """
 def padding_oracle_attack_exploiter(iv, ciphertext):
-    # print("[DEBUG] ciphertext={}".format(ciphertext))
     block_cnt = len(ciphertext) // 16
 
     result = b''
     for i in range(block_cnt):
-        ciper_block_to_crack = ciphertext[len(ciphertext) - (i + 1) * 16 : len(ciphertext) - i * 16]
-        # print("[DEBUG] ciper_block_to_crack={}".format(ciper_block_to_crack))
-        if i != block_cnt - 1:
-            ciper_block_before = ciphertext[len(ciphertext) - (i + 2) * 16 : len(ciphertext) - (i + 1) * 16]
+        cipher_block_to_crack = ciphertext[i*16 : (i+1)*16]
+        if i != 0:
+            ciper_block_before = ciphertext[(i-1)*16 : i*16]
         else:
             ciper_block_before = iv
-        # print("[DEBUG] ciper_block_before={}".format(ciper_block_before))
 
         # crack block using oracle
         intermediate_state = bytearray(16)
         crafted_pre_block = bytearray(16)
-        for byte_idx in range(16):
-            pos_to_crack = (16 - 1) - byte_idx # crack in reverse order
-            valid_padding = byte_idx + 1
-            for bf_value in range(256): # brute force all possible byte value
-                crafted_pre_block[pos_to_crack] = bf_value
-                if oracle(crafted_pre_block + ciper_block_to_crack, bytearray(16)) is True: # passing any iv to padding oracle works
+
+        valid_padding = 1 # crack a block in reverse order
+        while valid_padding <= 16:
+            pos_to_crack = 16 - valid_padding # crack in reverse order
+
+            if valid_padding != 1:
+                for bf_value in range(256): # brute force all possible byte value
+                    crafted_pre_block[pos_to_crack] = bf_value
+                    if oracle(crafted_pre_block + cipher_block_to_crack, bytearray(16)) is True: # iv value doesnt matter
+                        intermediate_state[pos_to_crack] = crafted_pre_block[pos_to_crack] ^ valid_padding
+
+                        # update intermediate_state for cracking next byte
+                        valid_padding = valid_padding + 1
+                        for update_idx in range(valid_padding - 1):
+                            pos_to_craft = (16 - 1) - update_idx
+                            crafted_pre_block[pos_to_craft] = valid_padding ^ intermediate_state[pos_to_craft]
+                        break
+            else:  # special handling for first padding value
+                oracle_true_bf_value = 0
+                oracle_true_cnt = 0
+                for bf_value in range(256): # brute force all possible byte value
+                    crafted_pre_block[pos_to_crack] = bf_value
+                    if oracle(crafted_pre_block + cipher_block_to_crack, bytearray(16)) is True: # iv value doesnt matter
+                        oracle_true_cnt += 1
+                        oracle_true_bf_value = bf_value
+
+                if oracle_true_cnt == 1:
+                    crafted_pre_block[pos_to_crack] = oracle_true_bf_value
                     intermediate_state[pos_to_crack] = crafted_pre_block[pos_to_crack] ^ valid_padding
 
                     # update intermediate_state for cracking next byte
@@ -143,13 +162,16 @@ def padding_oracle_attack_exploiter(iv, ciphertext):
                     for update_idx in range(valid_padding - 1):
                         pos_to_craft = (16 - 1) - update_idx
                         crafted_pre_block[pos_to_craft] = valid_padding ^ intermediate_state[pos_to_craft]
-                    break
+
+                else: # more than one value have true oracle return value, craft another pre block and try a gain
+                    crafted_pre_block[pos_to_crack - 1] += 1
+
 
         # reconstruct plaintext: plaintext_block_this = ciper_block_before ^ intermediate_state
         plain_block_exploit = bytearray(16)
         for p_idx in range(16):
             plain_block_exploit[p_idx] = ciper_block_before[p_idx] ^ intermediate_state[p_idx]
-        result = plain_block_exploit + result
+        result =  result + plain_block_exploit
 
     return result
  
@@ -162,4 +184,4 @@ if __name__ == '__main__':
     ciphertext = encrypt(p, KEY, iv)
     print(type(ciphertext))
     result = padding_oracle_attack_exploiter(iv, ciphertext)
-    print(result)
+    print("padding_oracle_attack_exploiter recover message: {}".format(result))
