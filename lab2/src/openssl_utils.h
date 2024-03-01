@@ -1,16 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <openssl/evp.h>
-#include <openssl/hmac.h>
+#include <openssl/evp.h> // task2
+#include <openssl/hmac.h> // task2
+#include <openssl/ssl.h> // task3
 
+// ============================================================
+// task2: enc, dec, hmac utils
+// ============================================================
 #define AES_BLOCK_SIZE 16
 #define AES_KEY_SIZE 32 // AES-256
 #define IV_SIZE 16
 #define HMAC_SIZE 32 // SHA-256 HMAC
 
-void handleErrors(void) {
-    fprintf(stderr, "Error occurred\n");
+void handleErrorsSSL(const char* errstr) {
+    fprintf(stderr, "%s\n", errstr);
     exit(EXIT_FAILURE);
 }
 
@@ -21,17 +25,17 @@ int aes_encrypt(const unsigned char *plaintext, int plaintext_len, const unsigne
     int ciphertext_len;
 
     if (!(ctx = EVP_CIPHER_CTX_new()))
-        handleErrors();
+        handleErrorsSSL("EVP_CIPHER_CTX_new() error occured");
 
     if (1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv))
-        handleErrors();
+        handleErrorsSSL("EVP_EncryptInit_ex() error occured");
 
     if (1 != EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len))
-        handleErrors();
+        handleErrorsSSL("EVP_EncryptUpdate() error occured");
     ciphertext_len = len;
 
     if (1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len))
-        handleErrors();
+        handleErrorsSSL("EVP_EncryptFinal_ex() error occured");
     ciphertext_len += len;
 
     EVP_CIPHER_CTX_free(ctx);
@@ -46,17 +50,17 @@ int aes_decrypt(const unsigned char *ciphertext, int ciphertext_len, const unsig
     int plaintext_len;
 
     if (!(ctx = EVP_CIPHER_CTX_new()))
-        handleErrors();
+        handleErrorsSSL("EVP_CIPHER_CTX_new() error occured");
 
     if (1 != EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv))
-        handleErrors();
+        handleErrorsSSL("EVP_DecryptInit_ex() error occured");
 
     if (1 != EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len))
-        handleErrors();
+        handleErrorsSSL("EVP_DecryptUpdate() error occured");
     plaintext_len = len;
 
     if (1 != EVP_DecryptFinal_ex(ctx, plaintext + len, &len))
-        handleErrors();
+        handleErrorsSSL("EVP_DecryptFinal_ex() error occured");
     plaintext_len += len;
 
     EVP_CIPHER_CTX_free(ctx);

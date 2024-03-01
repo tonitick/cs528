@@ -288,12 +288,100 @@ int main(int argc, char *argv[]) {
     usage();
   }
 
+
+  // ============================================================
+  // SSL authentication client side
+  // ============================================================
+  /* Initialize OpenSSL */
+  // SSL_library_init();
+  // OpenSSL_add_all_algorithms();
+  // SSL_load_error_strings();
+  SSL_load_error_strings();
+  SSL_library_init();
+  /* Load the human readable error strings for libcrypto */
+  ERR_load_crypto_strings();
+  /* Load all digest and cipher algorithms */
+  OpenSSL_add_all_algorithms();
+  /* Load config file, and other important initializations */
+  OPENSSL_config(NULL);
+
+  /* Create SSL context */
+  SSL_CTX *ctx = SSL_CTX_new(SSLv23_client_method());
+  if (ctx == NULL)
+    handleErrorsSSL("SSL_CTX_new() error occured");
+
+  /* Load certificate and private key */
+  if (SSL_CTX_use_certificate_file(ctx, "openssl_files/client.crt", SSL_FILETYPE_PEM) <= 0)
+    handleErrorsSSL("SSL_CTX_use_certificate_file() error occured");
+  if (SSL_CTX_use_PrivateKey_file(ctx, "openssl_files/client.key", SSL_FILETYPE_PEM) <= 0)
+    handleErrorsSSL("SSL_CTX_use_PrivateKey_file() error occured");
+
+  /* Load CA certificate */
+  if (!SSL_CTX_load_verify_locations(ctx, "openssl_files/ca.crt", NULL))
+    handleErrorsSSL("SSL_CTX_load_verify_locations() error occured");
+  SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+
+  /* tcp socket for ssl */
+  struct sockaddr_in local_ssl, remote_ssl;
+  socklen_t remote_ssl_len;
+  int ssl_sock_fd, ssl_net_fd;
+  if ( (ssl_sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    perror("socket()");
+    exit(1);
+  }
+
+  remote_ssl_len = sizeof(remote_ssl);
+  memset(&remote_ssl, 0, remote_ssl_len);
+  remote_ssl.sin_family = AF_INET;
+  remote_ssl.sin_addr.s_addr = inet_addr(remote_ip);
+  remote_ssl.sin_port = htons(port); // tcp & udp same port will not conflict, should be fine
+  do_debug("[Client] establishing tcp connection to server... ");
+  if (connect(ssl_sock_fd, (struct sockaddr*) &remote_ssl, sizeof(remote_ssl)) < 0){
+    perror("connect()");
+    exit(1);
+  }
+  do_debug("done.\n");
+
+  ssl_net_fd = ssl_sock_fd;
+
+  /* ssl connection */
+  SSL *ssl = SSL_new(ctx);
+  if (ssl == NULL)
+    handleErrorsSSL("SSL_new() error occured");
+  SSL_set_fd(ssl, ssl_net_fd);
+
+  /* connect ssl handshake */
+  do_debug("[Client] establishing ssl connection to server... ");
+  if (SSL_connect(ssl) <= 0)
+    handleErrorsSSL("SSL_connect() error occured");
+  do_debug("done.\n");
+
+  /* test ssl connection */
+  const char *message = "Hello from client!";
+  SSL_write(ssl, message, strlen(message));
+
+  // Receive response from server
+  char buffer[1024];
+  int bytes = SSL_read(ssl, buffer, sizeof(buffer));
+  if (bytes > 0) {
+    buffer[bytes] = '\0';
+    printf("[Authentication Succeed] Received: %s\n", buffer);
+  }
+
+  /* free ssl resources */
+  SSL_shutdown(ssl);
+  SSL_free(ssl);
+  close(ssl_net_fd);
+  SSL_CTX_free(ctx);
+
+  // ============================================================
+  // vpn traffic interface
+  // ============================================================
   /* initialize tun/tap interface */
   if ( (tap_fd = tun_alloc(if_name, flags | IFF_NO_PI)) < 0 ) {
     my_err("Error connecting to tun/tap interface %s!\n", if_name);
     exit(1);
   }
-
   do_debug("Successfully connected to interface %s\n", if_name);
 
   if ( (sock_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
