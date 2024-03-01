@@ -119,3 +119,97 @@ void hmac_sha256(const unsigned char *key, const unsigned char *data, int data_l
 
 //     return 0;
 // }
+
+// ============================================================
+// task3: key exchange, close ssl connection utils
+// ============================================================
+#define REQ_SIZE 6 // "hello", "keyiv", "close"
+void ssl_hello_request(SSL *ssl) {
+    const char* request = "hello";
+    SSL_write(ssl, request, REQ_SIZE);
+
+    // Receive response from server
+    char buffer[1024];
+    int bytes = SSL_read(ssl, buffer, sizeof(buffer));
+    if (bytes > 0) {
+        buffer[bytes] = '\0';
+        printf("[SSL RES] Received: %s\n", buffer);
+    }
+}
+
+void ssl_hello_response(SSL *ssl) {
+    char req[REQ_SIZE];
+    int bytes = SSL_read(ssl, req, REQ_SIZE);
+    if (bytes > 0) {
+        req[bytes] = '\0';
+        printf("[SSL REQ] Received: %s\n", req);
+    }
+    if (strcmp(req, "hello") != 0) return;
+
+    // Send response to client
+    const char *response = "Hello from server!";
+    SSL_write(ssl, response, strlen(response));
+}
+
+void ssl_keyiv_request(SSL *ssl, unsigned char* key, unsigned char* iv) {
+    const char* request = "keyiv";
+    SSL_write(ssl, request, REQ_SIZE);
+
+    RAND_bytes(key, AES_KEY_SIZE);
+    RAND_bytes(iv, IV_SIZE);
+
+    SSL_write(ssl, key, AES_KEY_SIZE);
+    SSL_write(ssl, iv, IV_SIZE);
+
+    // Receive response from server
+    char buffer[1024];
+    int bytes = SSL_read(ssl, buffer, sizeof(buffer));
+    if (bytes > 0) {
+        buffer[bytes] = '\0';
+        if (strcmp(buffer, "keyiv succeed") != 0) {
+            handleErrorsSSL("ssl keyiv_request() error occured");
+        }
+        else {
+            printf("[SSL RES] Received: %s\n", buffer);
+            printf("[Client] update key: 0x");
+            int i;
+            for (i = 0; i < AES_KEY_SIZE; i++) {
+                printf("%02x", *((unsigned char*)key + i));
+            }
+            printf("\n");
+            printf("[Client] update iv: 0x");
+            for (i = 0; i < IV_SIZE; i++) {
+                printf("%02x", *((unsigned char*)iv + i));
+            }
+            printf("\n");
+        }
+    }
+}
+
+void ssl_keyiv_response(SSL *ssl, unsigned char* key, unsigned char* iv) {
+    char req[REQ_SIZE];
+    int bytes = SSL_read(ssl, req, REQ_SIZE);
+    if (bytes > 0) {
+        req[bytes] = '\0';
+        printf("[SSL REQ] Received: %s\n", req);
+    }
+    if (strcmp(req, "keyiv") != 0) return;
+
+    SSL_read(ssl, key, AES_KEY_SIZE);
+    SSL_read(ssl, iv, IV_SIZE);
+    printf("[Server] update key: 0x");
+    int i;
+    for (i = 0; i < AES_KEY_SIZE; i++) {
+        printf("%02x", *((unsigned char*)key + i));
+    }
+    printf("\n");
+    printf("[Server] update iv: 0x");
+    for (i = 0; i < IV_SIZE; i++) {
+        printf("%02x", *((unsigned char*)iv + i));
+    }
+    printf("\n");
+
+    // Send response to client
+    const char *response = "keyiv succeed";
+    SSL_write(ssl, response, strlen(response));
+}

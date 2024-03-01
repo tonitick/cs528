@@ -233,7 +233,7 @@ int main(int argc, char *argv[]) {
   unsigned long int tap2net = 0, net2tap = 0;
 
   progname = argv[0];
-  
+
   /* Check command line options */
   while((option = getopt(argc, argv, "i:sc:p:uahd")) > 0){
     switch(option) {
@@ -290,20 +290,18 @@ int main(int argc, char *argv[]) {
 
 
   // ============================================================
+  // key, iv
+  // ============================================================
+  unsigned char key[AES_KEY_SIZE];
+  unsigned char iv[IV_SIZE];
+
+  // ============================================================
   // SSL authentication client side
   // ============================================================
   /* Initialize OpenSSL */
-  // SSL_library_init();
-  // OpenSSL_add_all_algorithms();
-  // SSL_load_error_strings();
-  SSL_load_error_strings();
   SSL_library_init();
-  /* Load the human readable error strings for libcrypto */
-  ERR_load_crypto_strings();
-  /* Load all digest and cipher algorithms */
   OpenSSL_add_all_algorithms();
-  /* Load config file, and other important initializations */
-  OPENSSL_config(NULL);
+  SSL_load_error_strings();
 
   /* Create SSL context */
   SSL_CTX *ctx = SSL_CTX_new(SSLv23_client_method());
@@ -357,16 +355,10 @@ int main(int argc, char *argv[]) {
   do_debug("done.\n");
 
   /* test ssl connection */
-  const char *message = "Hello from client!";
-  SSL_write(ssl, message, strlen(message));
+  ssl_hello_request(ssl);
 
-  // Receive response from server
-  char buffer[1024];
-  int bytes = SSL_read(ssl, buffer, sizeof(buffer));
-  if (bytes > 0) {
-    buffer[bytes] = '\0';
-    printf("[Authentication Succeed] Received: %s\n", buffer);
-  }
+  /* key exchange */
+  ssl_keyiv_request(ssl, key, iv);
 
   /* free ssl resources */
   SSL_shutdown(ssl);
@@ -426,10 +418,6 @@ int main(int argc, char *argv[]) {
   // ============================================================
   // traffic handling
   // ============================================================
-  // hardcode key & iv for task2, need to be removed in task3
-  unsigned char key[AES_KEY_SIZE] = "0123456789abcdef0123456789abcdef";
-  unsigned char iv[IV_SIZE] = "0123456789abcdef";
-
   /* use select() to handle two descriptors at once */
   maxfd = (tap_fd > net_fd)?tap_fd:net_fd;
 
