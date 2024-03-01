@@ -37,6 +37,7 @@
 #include <sys/time.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <signal.h>
 
 #include "openssl_utils.h"
 
@@ -371,11 +372,37 @@ int main(int argc, char *argv[]) {
   /* key exchange */
   ssl_keyiv_response(ssl, key, iv);
 
-  /* free ssl resources */
-  SSL_shutdown(ssl);
-  SSL_free(ssl);
-  close(ssl_net_fd);
-  SSL_CTX_free(ctx);
+  int pipe_fd[2];
+  if (pipe(pipe_fd) == -1) {
+    perror("pipe()");
+    exit(1);
+  }
+
+  int p = fork();
+  if (p < 0) {
+    perror("fork()");
+    exit(1);
+  }
+
+  if (p > 0) { // parent: handle ssl connection
+    close(pipe_fd[0]); // only need to write to child process
+    
+    ssl_close_response(ssl); // block for close request
+    write(pipe_fd[1], "close", strlen("close"));
+
+    /* free ssl resources */
+    SSL_shutdown(ssl);
+    SSL_free(ssl);
+    close(ssl_net_fd);
+    SSL_CTX_free(ctx);
+
+    kill(p, SIGTERM);
+
+    return 0;
+  }
+
+  // child: handle vpn traffic
+  close(pipe_fd[1]); // only need to listen from parent process
 
 
   // ============================================================
@@ -431,11 +458,13 @@ int main(int argc, char *argv[]) {
   // ============================================================
   /* use select() to handle two descriptors at once */
   maxfd = (tap_fd > net_fd)?tap_fd:net_fd;
+  maxfd = (maxfd > pipe_fd[0])?maxfd:pipe_fd[0];
 
   while(1) {
     int ret;
     fd_set rd_set;
 
+    FD_SET(pipe_fd[0], &rd_set);
     FD_ZERO(&rd_set);
     FD_SET(tap_fd, &rd_set); FD_SET(net_fd, &rd_set);
 
@@ -448,6 +477,18 @@ int main(int argc, char *argv[]) {
     if (ret < 0) {
       perror("select()");
       exit(1);
+    }
+
+    if(FD_ISSET(pipe_fd[0], &rd_set)){
+      nread = cread(pipe_fd[0], recv_buffer, HMAC_SIZE + BUFSIZE + AES_BLOCK_SIZE);
+      if (nread > 0)
+        recv_buffer[nread] = '\0';
+      if (strcmp(recv_buffer, "close") == 0) {
+        // release resources
+        close(net_fd);
+        // close(tap_fd);
+        return 0;
+      }
     }
 
     if(FD_ISSET(tap_fd, &rd_set)){

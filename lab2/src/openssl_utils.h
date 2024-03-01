@@ -213,3 +213,30 @@ void ssl_keyiv_response(SSL *ssl, unsigned char* key, unsigned char* iv) {
     const char *response = "keyiv succeed";
     SSL_write(ssl, response, strlen(response));
 }
+
+void ssl_close_request(SSL *ssl) {
+    const char* request = "close";
+    SSL_write(ssl, request, REQ_SIZE);
+
+    // Receive response from server
+    char buffer[1024];
+    int bytes = SSL_read(ssl, buffer, sizeof(buffer));
+    if (bytes > 0) {
+        buffer[bytes] = '\0';
+        printf("[SSL RES] Received: %s\n", buffer);
+    }
+}
+
+void ssl_close_response(SSL *ssl) {
+    char req[REQ_SIZE];
+    int bytes = SSL_read(ssl, req, REQ_SIZE);
+    if (bytes > 0) {
+        req[bytes] = '\0';
+        printf("[SSL REQ] Received: %s\n", req);
+    }
+    if (strcmp(req, "close") != 0) return;
+
+    // Send response to client
+    const char *response = "Server ssl connection closed";
+    SSL_write(ssl, response, strlen(response));
+}
