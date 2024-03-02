@@ -240,3 +240,15 @@ void ssl_close_response(SSL *ssl) {
     const char *response = "Server ssl connection closed";
     SSL_write(ssl, response, strlen(response));
 }
+
+void ssl_get_udp_port(SSL *ssl, unsigned short int* port) {
+    int bytes = SSL_read(ssl, port, sizeof(unsigned short int));
+    printf("[Client] obtain server assigned port: %u\n", *port);
+    if (bytes != sizeof(unsigned short int))
+        handleErrorsSSL("ssl get_udp_port error occured");
+}
+
+void ssl_assign_udp_port(SSL *ssl, unsigned short int* port) {
+    SSL_write(ssl, port, sizeof(unsigned short int));
+    printf("[Server] assign port: %u\n", *port);
+}
