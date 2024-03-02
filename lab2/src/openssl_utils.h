@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <openssl/evp.h> // task2
 #include <openssl/hmac.h> // task2
 #include <openssl/ssl.h> // task3
@@ -251,4 +252,56 @@ void ssl_get_udp_port(SSL *ssl, unsigned short int* port) {
 void ssl_assign_udp_port(SSL *ssl, unsigned short int* port) {
     SSL_write(ssl, port, sizeof(unsigned short int));
     printf("[Server] assign port: %u\n", *port);
+}
+
+// ============================================================
+// task6: dynamic key exchange, close
+// ============================================================
+void ssl_close_server_side(SSL_CTX *ctx, SSL *ssl, int ssl_net_fd, int pid_to_kill) {
+    // char req[REQ_SIZE];
+    // int bytes = SSL_read(ssl, req, REQ_SIZE);
+    // if (bytes > 0) {
+    //     req[bytes] = '\0';
+    //     printf("[SSL REQ] Received: %s\n", req);
+    // }
+    // if (strcmp(req, "close") != 0) return;
+
+    // Send response to client
+    const char *response = "Server ssl connection closed";
+    SSL_write(ssl, response, strlen(response));
+
+    SSL_shutdown(ssl);
+    SSL_free(ssl);
+    close(ssl_net_fd);
+    SSL_CTX_free(ctx);
+
+    kill(pid_to_kill, SIGTERM);
+}
+
+void ssl_keyiv_server_side(SSL *ssl, unsigned char* key, unsigned char* iv) {
+    // char req[REQ_SIZE];
+    // int bytes = SSL_read(ssl, req, REQ_SIZE);
+    // if (bytes > 0) {
+    //     req[bytes] = '\0';
+    //     printf("[SSL REQ] Received: %s\n", req);
+    // }
+    // if (strcmp(req, "keyiv") != 0) return;
+
+    SSL_read(ssl, key, AES_KEY_SIZE);
+    SSL_read(ssl, iv, IV_SIZE);
+    printf("[Server] update key: 0x");
+    int i;
+    for (i = 0; i < AES_KEY_SIZE; i++) {
+        printf("%02x", *((unsigned char*)key + i));
+    }
+    printf("\n");
+    printf("[Server] update iv: 0x");
+    for (i = 0; i < IV_SIZE; i++) {
+        printf("%02x", *((unsigned char*)iv + i));
+    }
+    printf("\n");
+
+    // Send response to client
+    const char *response = "keyiv succeed";
+    SSL_write(ssl, response, strlen(response));
 }

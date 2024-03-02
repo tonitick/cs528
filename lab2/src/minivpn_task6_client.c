@@ -380,8 +380,14 @@ int main(int argc, char *argv[]) {
 
   if (p > 0) { // parent: handle ssl connection
     close(pipe_fd[0]); // only need to write to child process
+
+    sleep(30); // update session key after 30s
+    ssl_keyiv_request(ssl, key, iv);
+    write(pipe_fd[1], "keyiv", strlen("keyiv"));
+    write(pipe_fd[1], key, AES_KEY_SIZE);
+    write(pipe_fd[1], iv, IV_SIZE);
     
-    sleep(200); // close connection after 100s
+    sleep(200); // close connection after 200s
     ssl_close_request(ssl);
     write(pipe_fd[1], "close", strlen("close"));
 
@@ -461,7 +467,7 @@ int main(int argc, char *argv[]) {
     }
 
     if(FD_ISSET(pipe_fd[0], &rd_set)){
-      nread = cread(pipe_fd[0], recv_buffer, HMAC_SIZE + BUFSIZE + AES_BLOCK_SIZE);
+      nread = read_n(pipe_fd[0], recv_buffer, 5);
       if (nread > 0)
         recv_buffer[nread] = '\0';
       if (strcmp(recv_buffer, "close") == 0) {
@@ -469,6 +475,21 @@ int main(int argc, char *argv[]) {
         close(net_fd);
         // close(tap_fd);
         return 0;
+      }
+      else if (strcmp(recv_buffer, "keyiv") == 0) {
+        read_n(pipe_fd[0], key, AES_KEY_SIZE);
+        read_n(pipe_fd[0], iv, IV_SIZE);
+        printf("[Client] update key: 0x");
+        int i;
+        for (i = 0; i < AES_KEY_SIZE; i++) {
+          printf("%02x", *((unsigned char*)key + i));
+        }
+        printf("\n");
+        printf("[Client] update iv: 0x");
+        for (i = 0; i < IV_SIZE; i++) {
+          printf("%02x", *((unsigned char*)iv + i));
+        }
+        printf("\n");
       }
     }
 
