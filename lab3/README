@@ -1,0 +1,5 @@
+Run:
+    cd src
+    make
+    ./attack <attacker_ip> <local_dns_ip>
+
